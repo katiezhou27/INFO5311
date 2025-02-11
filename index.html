@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SF Tree Density Heatmap</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://unpkg.com/topojson-client@3"></script>
+    <style>
+        body { font-family: Arial, sans-serif;display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        svg { width: 100vw; height: 100vh; display: flex; margin: 0 auto; justify-content: center;}
+        .neighborhood { fill: none; stroke: #000; stroke-width: 0.5px; }
+        .heatmap-point { fill: green; opacity: 0.2; }
+        .neighborhood-label { font-size: 12px; fill: #000; text-anchor: middle; }
+        .title { font-size: 20px; font-weight: bold; margin-bottom: 20px; }
+        .map-container { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; width: 100%; margin-top: 20px; }
+        .legend { width: 300px; height: 28px; background: white; border-radius: 5px; padding: 10px; text-align: center; margin: 10px auto;}
+        .top-neighborhood-circle { fill: #000; opacity: 0.8; r: 8}
+        .top-neighborhood-label { font-size: 14px; fill: #000; font-weight: bold; text-anchor: middle; }
+        .content-container { display: flex; flex-direction: column; align-items: center; justify-content: center;  width: 100%; margin: 0 auto;}
+        .writeup{max-width: 800px;}
+    </style>
+</head>
+<body>
+        <div class="content-container">
+            <div class="title">Tree Density Distribution in SF Neighborhoods</div>
+            
+            <!-- Writeup Section Below Title -->
+            <div class="writeup">
+                <p>
+                    This map visualizes tree density distribution across San Francisco neighborhoods.
+                    Darker green indicates areas with higher tree density, while lighter green represents lower density.
+                    The black circles highlight the top 10 neighborhoods with the highest tree density.
+                    This information is valuable for urban planning, environmental studies, and sustainability efforts.
+                </p>
+            </div>
+
+            <!-- Legend and Map Section -->
+            <div class="map-container">
+                <div id="legend" class="legend"></div>
+                <svg id="choropleth"></svg>
+            </div>
+        </div>    
+
+    </div>    
+   
+    <script>
+        const mapsvg = d3.select("#choropleth");
+        const mapWidth = window.innerWidth;
+        const mapHeight = window.innerHeight;
+        const mapMargin = { top: 20, right: 20, bottom: 20, left: 20 };
+        const mapAreaWidth = mapWidth - mapMargin.left - mapMargin.right;
+        const mapAreaHeight = mapHeight - mapMargin.top - mapMargin.bottom;
+        
+        const map = mapsvg.append("g")
+            .attr("transform", `translate(${mapMargin.left}, ${mapMargin.top})`);
+        
+        // Async function to build the map
+        const requestMap = async function() {
+            // Load SF neighborhood boundaries
+            const sfData = await d3.json("SF-Neighborhoods.geo.json");
+            const neighborhoods = topojson.feature(sfData, sfData.objects.SFNeighborhoods);
+    
+            // Setup projection
+            const projection = d3.geoMercator()
+                .fitSize([mapAreaWidth, mapAreaHeight], neighborhoods);
+            const path = d3.geoPath().projection(projection);
+            
+            // Draw neighborhoods
+            map.selectAll(".neighborhood")
+                .data(neighborhoods.features)
+                .join("path")
+                .attr("class", "neighborhood")
+                .attr("d", path);
+            
+            // Load tree data
+            const treeData = await d3.csv("Street_Tree_List-2022-01-30_FILTERED.csv");
+            const heatmapData = treeData.map(d => {
+                return {
+                    lat: +d.Latitude,
+                    lng: +d.Longitude
+                };
+            }).filter(d => !isNaN(d.lat) && !isNaN(d.lng));
+            
+            // Plot tree density as circles
+            map.selectAll(".heatmap-point")
+                .data(heatmapData)
+                .join("circle")
+                .attr("class", "heatmap-point")
+                .attr("cx", d => projection([d.lng, d.lat])[0])
+                .attr("cy", d => projection([d.lng, d.lat])[1])
+                .attr("r", 2);
+
+            const legendSvg = d3.select("#legend").append("svg")
+                .attr("width", 300)
+                .attr("height", 50);
+            
+            const gradient = legendSvg.append("defs")
+                .append("linearGradient")
+                .attr("id", "legend-gradient")
+                .attr("x1", "0%").attr("y1", "0%")
+                .attr("x2", "100%").attr("y2", "0%");
+            
+            gradient.append("stop").attr("offset", "0%").attr("stop-color", "lightgreen");
+            gradient.append("stop").attr("offset", "100%").attr("stop-color", "darkgreen");
+            
+            legendSvg.append("rect")
+                .attr("x", 20)
+                .attr("y", 10)
+                .attr("width", 200)
+                .attr("height", 20)
+                .style("fill", "url(#legend-gradient)");
+            
+            legendSvg.append("text")
+                .attr("x", 20).attr("y", 40)
+                .attr("class", "legend")
+                .text("Lower Density");
+            
+            legendSvg.append("text")
+                .attr("x", 200).attr("y", 40)
+                .attr("class", "legend")
+                .text("Higher Density");
+
+            const neighborhoodDensity = new Map();
+            
+            treeData.forEach(d => {
+                let nearestNeighborhood = neighborhoods.features.find(n => 
+                    d3.geoContains(n, [d.Longitude, d.Latitude])
+                );
+                if (nearestNeighborhood) {
+                    let name = nearestNeighborhood.properties.name;
+                    neighborhoodDensity.set(name, (neighborhoodDensity.get(name) || 0) + 1);
+                }
+            });
+            
+            const topNeighborhoods = Array.from(neighborhoodDensity.entries())
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+            
+            // Mark top 10 neighborhoods on the map with circles
+            map.selectAll(".top-neighborhood-circle")
+                .data(neighborhoods.features.filter(d => topNeighborhoods.some(tn => tn[0] === d.properties.name)))
+                .join("circle")
+                .attr("class", "top-neighborhood-circle")
+                .attr("cx", d => projection(d3.geoCentroid(d))[0])
+                .attr("cy", d => projection(d3.geoCentroid(d))[1]);
+            
+            // Add labels next to the circles
+            map.selectAll(".top-neighborhood-label")
+                .data(neighborhoods.features.filter(d => topNeighborhoods.some(tn => tn[0] === d.properties.name)))
+                .join("text")
+                .attr("class", "top-neighborhood-label")
+                .attr("x", d => projection(d3.geoCentroid(d))[0])
+                .attr("y", d => projection(d3.geoCentroid(d))[1] - 10)
+                .text(d => {
+                    const density = topNeighborhoods.find(tn => tn[0] === d.properties.name)[1];
+                    return `${d.properties.name} (${density})`;
+                });
+        };
+        
+        requestMap();
+    </script>
+</body>
+</html>
