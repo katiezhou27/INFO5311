@@ -25,7 +25,6 @@
         <div class="content-container">
             <div class="title">Tree Density Distribution in SF Neighborhoods</div>
             
-            <!-- Writeup Section Below Title -->
             <div class="writeup">
                 <p>
                     This map visualizes tree density distribution across San Francisco neighborhoods.
@@ -35,8 +34,7 @@
                 </p>
             </div>
 
-            <!-- Legend and Map Section -->
-            <div class="map-container">
+=            <div class="map-container">
                 <div id="legend" class="legend"></div>
                 <svg id="choropleth"></svg>
             </div>
@@ -55,25 +53,20 @@
         const map = mapsvg.append("g")
             .attr("transform", `translate(${mapMargin.left}, ${mapMargin.top})`);
         
-        // Async function to build the map
         const requestMap = async function() {
-            // Load SF neighborhood boundaries
             const sfData = await d3.json("SF-Neighborhoods.geo.json");
             const neighborhoods = topojson.feature(sfData, sfData.objects.SFNeighborhoods);
     
-            // Setup projection
             const projection = d3.geoMercator()
                 .fitSize([mapAreaWidth, mapAreaHeight], neighborhoods);
             const path = d3.geoPath().projection(projection);
             
-            // Draw neighborhoods
             map.selectAll(".neighborhood")
                 .data(neighborhoods.features)
                 .join("path")
                 .attr("class", "neighborhood")
                 .attr("d", path);
             
-            // Load tree data
             const treeData = await d3.csv("Street_Tree_List-2022-01-30_FILTERED.csv");
             const heatmapData = treeData.map(d => {
                 return {
@@ -82,7 +75,6 @@
                 };
             }).filter(d => !isNaN(d.lat) && !isNaN(d.lng));
             
-            // Plot tree density as circles
             map.selectAll(".heatmap-point")
                 .data(heatmapData)
                 .join("circle")
@@ -137,7 +129,6 @@
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 10);
             
-            // Mark top 10 neighborhoods on the map with circles
             map.selectAll(".top-neighborhood-circle")
                 .data(neighborhoods.features.filter(d => topNeighborhoods.some(tn => tn[0] === d.properties.name)))
                 .join("circle")
@@ -145,7 +136,6 @@
                 .attr("cx", d => projection(d3.geoCentroid(d))[0])
                 .attr("cy", d => projection(d3.geoCentroid(d))[1]);
             
-            // Add labels next to the circles
             map.selectAll(".top-neighborhood-label")
                 .data(neighborhoods.features.filter(d => topNeighborhoods.some(tn => tn[0] === d.properties.name)))
                 .join("text")
